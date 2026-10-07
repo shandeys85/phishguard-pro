@@ -91,7 +91,7 @@ def real_domain_check(url):
           "Peringatan: Menggunakan protokol HTTP (tidak terenkripsi SSL)"
       )
 
-    # 3. Anomali Subdomain (Contoh: bca.co.id.situs-penipu.com)
+    # 3. Anomali Subdomain
     domain_parts = domain.split(".")
     if len(domain_parts) > 3:
       score += 20
@@ -116,7 +116,7 @@ def real_domain_check(url):
         )
         break
 
-   # 5. Cek Status HTTP Website menggunakan requests
+    # 5. Cek Status HTTP Website menggunakan requests
     server_status = "Tidak Aktif / Unreachable"
     try:
       response = requests.get(url, timeout=5)
@@ -126,11 +126,6 @@ def real_domain_check(url):
           else f"Merespons dengan Error ({response.status_code})"
       )
     except Exception:
-      score += 15
-      reasons.append(
-          "Peringatan: Server target gagal dihubungi atau memblokir koneksi"
-          " pengujian."
-      )
       score += 15
       reasons.append(
           "Peringatan: Server target gagal dihubungi atau memblokir koneksi"
@@ -172,13 +167,53 @@ def real_domain_check(url):
     ], "Error"
 
 
-def analyze_email(text):
+def analyze_email_content(text):
   text_lower = text.lower()
   found_keywords = [kw for kw in PHISHING_KEYWORDS if kw in text_lower]
-  score = len(found_keywords) * 35
+  score = len(found_keywords) * 30
   reasons = [
       f"Ditemukan kata pancingan psikologis: '{kw}'" for kw in found_keywords
   ]
+  return min(score, 100), reasons
+
+
+def analyze_sender_email(sender_email):
+  """Fungsi untuk menganalisis alamat email pengirim (Sender Spoofing Check)"""
+  score = 0
+  reasons = []
+
+  if not sender_email:
+    return 0, reasons
+
+  if "@" in sender_email:
+    domain = sender_email.split("@")[1].lower()
+  else:
+    return 50, ["Format alamat email pengirim tidak valid."]
+
+  # Cek domain publik gratisan
+  free_providers = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com"]
+  if domain in free_providers:
+    score += 25
+    reasons.append(
+        f"Peringatan: Pengirim menggunakan layanan email publik gratis"
+        f" ('{domain}'), hati-hati jika mengatasnamakan instansi resmi."
+    )
+
+  # Cek Typosquatting pada domain pengirim
+  for brand in POPULAR_BRANDS:
+    if (
+        brand in domain
+        and not domain.endswith(f".{brand}.com")
+        and not domain.endswith(f"{brand}.co.id")
+        and not domain.endswith(f"{brand}.com")
+    ):
+      score += 45
+      reasons.append(
+          f"BAHAYA: Alamat email pengirim memalsukan merek populer ('{brand}')"
+          f" pada domain '{domain}'."
+      )
+      break
+
   return min(score, 100), reasons
 
 
@@ -189,14 +224,15 @@ st.markdown(
 )
 st.markdown(
     "<p style='text-align: center; color: gray;'>Sistem Deteksi Ancaman Phishing"
-    " Berbasis Heuristik Teks dan Intelijen Jaringan Real-Time</p>",
+    " Berbasis Heuristik Teks, Spoofing Pengirim, dan Intelijen Jaringan"
+    " Real-Time</p>",
     unsafe_allow_html=True,
 )
 st.divider()
 
-# Gunakan layout Tab agar profesional
+# Gunakan layout Tab
 tab1, tab2, tab3 = st.tabs(
-    ["🌐 Analisis URL / Domain", "✉️ Analisis Pesan Teks", "ℹ️ Tentang Sistem"]
+    ["🌐 Analisis URL / Domain", "✉️ Analisis Pesan & Pengirim", "ℹ️ Tentang Sistem"]
 )
 
 with tab1:
@@ -220,20 +256,15 @@ with tab1:
       ):
         score, reasons, server_status = real_domain_check(target_url)
 
-      # Tentukan Status Keamanan
       if score >= 50:
         status_text = "BERBAHAYA (Potensi Phishing Tinggi)"
-        status_color = "red"
       elif score > 0:
         status_text = "MENCURIGAKAN (Waspada)"
-        status_color = "orange"
       else:
         status_text = "AMAN"
-        status_color = "green"
 
       st.divider()
 
-      # Tampilkan Metric Dashboard
       m_col1, m_col2, m_col3 = st.columns(3)
       m_col1.metric(
           label="Skor Risiko Keamanan",
@@ -260,57 +291,83 @@ with tab1:
       st.warning("Silakan masukkan URL target terlebih dahulu.")
 
 with tab2:
-  st.subheader("Pemeriksaan Konten Pesan / Email / SMS")
+  st.subheader("Pemeriksaan Alamat Pengirim & Konten Pesan")
+
+  sender_email = st.text_input(
+      "Alamat Email Pengirim (Opsional):",
+      placeholder="contoh: support@bca-verify-security.com",
+  )
   target_email = st.text_area(
-      "Tempelkan teks mencurigakan di sini:",
+      "Tempelkan teks pesan mencurigakan:",
       placeholder=(
           "Contoh: Akun Anda diblokir, segera verifikasi data Anda di sini..."
       ),
   )
 
-  if st.button("🔍 Analisis Teks", use_container_width=True):
-    if target_email:
-      score, reasons = analyze_email(target_email)
+  if st.button("🔍 Analisis Email & Teks", use_container_width=True):
+    if target_email or sender_email:
+      # Analisis pengirim dan konten
+      score_sender, reasons_sender = analyze_sender_email(sender_email)
+      score_content, reasons_content = analyze_email_content(target_email)
+
+      # Gabungkan skor dan alasan (maksimal 100)
+      total_score = min(score_sender + score_content, 100)
+      all_reasons = reasons_sender + reasons_content
+
+      if total_score >= 50:
+        status_text = "🔴 BERBAHAYA (Indikasi Phishing Kuat)"
+      elif total_score > 0:
+        status_text = "🟡 MENCURIGAKAN"
+      else:
+        status_text = "🟢 AMAN / NORMAL"
 
       st.divider()
+
       t_col1, t_col2 = st.columns(2)
       t_col1.metric(
-          label="Indeks Risiko Teks",
-          value=f"{score} / 100",
-          delta="Bahaya" if score >= 50 else "Aman",
+          label="Total Indeks Risiko",
+          value=f"{total_score} / 100",
+          delta="Bahaya" if total_score >= 50 else "Aman",
           delta_color="inverse",
       )
-      t_col2.metric(
-          label="Status Pesan",
-          value=(
-              "🔴 Terdeteksi Indikasi Phishing"
-              if score >= 50
-              else "🟢 Normal / Bersih"
-          ),
-      )
+      t_col2.metric(label="Status Pesan", value=status_text)
 
-      st.markdown("### 📋 Detail Analisis Psikologis Teks:")
-      if reasons:
-        for r in reasons:
-          st.warning(f"- {r}")
+      st.markdown("### 📋 Detail Analisis Pengirim & Konten:")
+
+      if sender_email:
+        st.markdown(f"**Analisis Pengirim (`{sender_email}`):**")
+        if reasons_sender:
+          for r in reasons_sender:
+            if "BAHAYA" in r:
+              st.error(f"  - {r}")
+            else:
+              st.warning(f"  - {r}")
+        else:
+          st.success("  - Domain pengirim terlihat normal/bersih.")
+
+      st.markdown("**Analisis Isi Pesan:**")
+      if reasons_content:
+        for r in reasons_content:
+          st.warning(f"  - {r}")
       else:
         st.success(
-            "- Tidak ditemukan pola kata kunci rekayasa sosial atau pancingan"
-            " psikologis berbahaya."
+            "  - Tidak ditemukan kata kunci pancingan psikologis berbahaya."
         )
     else:
-      st.warning("Silakan masukkan teks pesan terlebih dahulu.")
+      st.warning(
+          "Silakan masukkan setidaknya alamat email pengirim atau isi pesan."
+      )
 
 with tab3:
   st.subheader("Tentang PhishGuard Pro Enterprise")
   st.write(
       "Aplikasi ini dikembangkan untuk mendeteksi ancaman kejahatan siber"
       " berbasis rekayasa sosial (phishing) secara cepat dan akurat. Menggabungkan"
-      " teknik analisis semantik teks, inspeksi struktur domain anomali,"
-      " pengecekan *typosquatting*, serta verifikasi umur domain via protokol"
-      " WHOIS secara *real-time*."
+      " analisis alamat email pengirim (*spoofing check*), analisis semantik"
+      " teks, inspeksi struktur domain anomali, penentuan *typosquatting*, serta"
+      " verifikasi umur domain via protokol WHOIS secara *real-time*."
   )
   st.info(
-      "💡 **Tips Keamanan:** Jangan pernah mengklik tautan atau memasukkan data"
-      " pribadi pada situs web yang terdeteksi memiliki skor risiko tinggi."
+      "💡 **Tips Keamanan:** Selalu periksa domain asli pengirim dan hindari"
+      " mengklik tautan pada pesan yang mendesak tindakan instan."
   )
