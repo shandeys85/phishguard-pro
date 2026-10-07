@@ -116,16 +116,21 @@ def real_domain_check(url):
         )
         break
 
-    # 5. Cek Status HTTP Website menggunakan requests
+   # 5. Cek Status HTTP Website menggunakan requests
     server_status = "Tidak Aktif / Unreachable"
     try:
       response = requests.get(url, timeout=5)
       server_status = (
           f"Aktif (HTTP Status: {response.status_code})"
           if response.status_code < 400
-        )
-        f"Merespons dengan Error ({response.status_code})"
+          else f"Merespons dengan Error ({response.status_code})"
+      )
     except Exception:
+      score += 15
+      reasons.append(
+          "Peringatan: Server target gagal dihubungi atau memblokir koneksi"
+          " pengujian."
+      )
       score += 15
       reasons.append(
           "Peringatan: Server target gagal dihubungi atau memblokir koneksi"
