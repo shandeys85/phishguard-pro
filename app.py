@@ -118,29 +118,63 @@ def get_whois_data(domain):
     return None, str(e)
 
 
-def real_domain_check(url):
-  """Fungsi komprehensif untuk memeriksa keamanan URL"""
-  try:
-    # Bersihkan input jika tidak sengaja tersalin format markdown [...]()
-    url = url.strip()
-    if "[" in url and "](" in url:
-      # Ambil bagian URL di dalam kurung siku atau URL aslinya
-      match = re.search(r"\((.*?)\)", url)
-      if match:
-        url = match.group(1)
+def analyze_sender_email(sender_email, text_content=""):
+  """Fungsi analisis pengirim yang lebih agresif mendeteksi pencatutan merek"""
+  score = 0
+  reasons = []
 
-    if not url.startswith("http://") and not url.startswith("https://"):
-      url = "https://" + url
+  if not sender_email:
+    return 0, reasons
 
-    parsed = urlparse(url)
-    domain = parsed.netloc or parsed.path.split("/")[0]
+  if "@" in sender_email:
+    domain = sender_email.split("@")[1].lower()
+    local_part = sender_email.split("@")[0].lower()
+  else:
+    return 50, ["Format alamat email pengirim tidak valid."]
 
-    if not domain:
-      return 0, ["Format URL tidak valid"], "Unknown"
+  free_providers = [
+      "gmail.com",
+      "yahoo.com",
+      "hotmail.com",
+      "outlook.com",
+      "ymail.com",
+  ]
 
-    score = 0
-    reasons = []
+  if domain in free_providers:
+    mentioned_brand = None
+    for brand in POPULAR_BRANDS:
+      if brand in local_part or brand in text_content.lower():
+        mentioned_brand = brand
+        break
 
+    if mentioned_brand:
+      score += 65
+      reasons.append(
+          f"BAHAYA BESAR: Pengirim menggunakan email publik gratis ('{domain}')"
+          f" tetapi mencatut nama instansi/merek resmi ('{mentioned_brand}')."
+          " Ini adalah ciri utama penipuan/spoofing!"
+      )
+    else:
+      score += 25
+      reasons.append(
+          f"Peringatan: Pengirim menggunakan layanan email publik gratis"
+          f" ('{domain}')."
+      )
+
+  for brand in POPULAR_BRANDS:
+    if (
+        brand in domain
+        and not domain.endswith(f".{brand}.com")
+        and not domain.endswith(f"{brand}.co.id")
+    ):
+      score += 50
+      reasons.append(
+          f"BAHAYA: Alamat email pengirim memalsukan merek populer ('{brand}')"
+          f" pada domain '{domain}'."
+      )
+      break
+
+  return min(score, 100), reasons
     # 1. Cek apakah menggunakan alamat IP mentah
     if is_ip_address(domain):
       score += 40
