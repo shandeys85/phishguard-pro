@@ -102,6 +102,7 @@ POPULAR_BRANDS = [
     "kemenkeu",
 ]
 
+
 def is_ip_address(domain):
   """Fungsi untuk mengecek apakah domain berupa alamat IP mentah"""
   ip_pattern = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
@@ -116,6 +117,126 @@ def get_whois_data(domain):
     return w.creation_date, None
   except Exception as e:
     return None, str(e)
+
+
+def real_domain_check(url):
+  """Fungsi komprehensif untuk memeriksa keamanan URL"""
+  try:
+    url = url.strip()
+    if "[" in url and "](" in url:
+      match = re.search(r"\((.*?)\)", url)
+      if match:
+        url = match.group(1)
+
+    if not url.startswith("http://") and not url.startswith("https://"):
+      url = "https://" + url
+
+    parsed = urlparse(url)
+    domain = parsed.netloc or parsed.path.split("/")[0]
+
+    if not domain:
+      return 0, ["Format URL tidak valid"], "Unknown"
+
+    score = 0
+    reasons = []
+
+    if is_ip_address(domain):
+      score += 40
+      reasons.append(
+          "BAHAYA: URL menggunakan alamat IP mentah alih-alih nama domain"
+          " resmi."
+      )
+
+    if parsed.scheme == "http":
+      score += 25
+      reasons.append(
+          "Peringatan: Menggunakan protokol HTTP (tidak terenkripsi SSL)"
+      )
+
+    domain_parts = domain.split(".")
+    if len(domain_parts) > 3:
+      score += 20
+      reasons.append(
+          f"Peringatan: Struktur domain mencurigakan dengan banyak subdomain"
+          f" ({len(domain_parts)} segmen)."
+      )
+
+    domain_lower = domain.lower()
+    for brand in POPULAR_BRANDS:
+      if (
+          brand in domain_lower
+          and not domain_lower.endswith(f".{brand}.com")
+          and not domain_lower.endswith(f"{brand}.co.id")
+          and not domain_lower.endswith(f"{brand}.com")
+      ):
+        score += 35
+        reasons.append(
+            f"Peringatan: Terdeteksi upaya peniruan merek populer ('{brand}')"
+            " pada domain."
+        )
+        break
+
+    server_status = "Tidak Aktif / Unreachable"
+    try:
+      response = requests.get(url, timeout=5)
+      server_status = (
+          f"Aktif (HTTP Status: {response.status_code})"
+          if response.status_code < 400
+          else f"Merespons dengan Error ({response.status_code})"
+      )
+    except Exception:
+      score += 15
+      reasons.append(
+          "Peringatan: Server target gagal dihubungi atau memblokir koneksi"
+          " pengujian."
+      )
+
+    creation_date, error_msg = get_whois_data(domain)
+
+    if isinstance(creation_date, list):
+      creation_date = creation_date[0]
+
+    if creation_date:
+      if hasattr(creation_date, "tzinfo") and creation_date.tzinfo is not None:
+        creation_date = creation_date.replace(tzinfo=None)
+
+      age_days = (datetime.now() - creation_date).days
+      reasons.append(
+          f"Info Domain: Dibuat pada {creation_date.strftime('%Y-%m-%d')} (Umur:"
+          f" {age_days} hari)"
+      )
+
+      if age_days < 30:
+        score += 60
+        reasons.append(
+            f"BAHAYA: Domain ini sangat baru ({age_days} hari)! Sering digunakan"
+            " untuk modus phishing."
+        )
+    else:
+      score += 30
+      reasons.append(
+          "Peringatan: Tanggal registrasi domain disembunyikan/tidak valid"
+          f" ({error_msg or 'Whois kosong'})."
+      )
+
+    return min(score, 100), reasons, server_status
+
+  except Exception as e:
+    return 50, [
+        "Peringatan: Gagal memproses analisis URL. Error:"
+        f" {str(e)}"
+    ], "Error"
+
+
+def analyze_email_content(text):
+  text_lower = text.lower()
+  found_keywords = [kw for kw in PHISHING_KEYWORDS if kw in text_lower]
+  score = len(found_keywords) * 40
+  reasons = [
+      f"Ditemukan indikator pancingan psikologis: '{kw}'"
+      for kw in found_keywords
+  ]
+  return min(score, 100), reasons
 
 
 def analyze_sender_email(sender_email, text_content=""):
@@ -175,149 +296,6 @@ def analyze_sender_email(sender_email, text_content=""):
       break
 
   return min(score, 100), reasons
-    # 1. Cek apakah menggunakan alamat IP mentah
-    if is_ip_address(domain):
-      score += 40
-      reasons.append(
-          "BAHAYA: URL menggunakan alamat IP mentah alih-alih nama domain"
-          " resmi."
-      )
-
-    # 2. Cek protokol HTTP vs HTTPS
-    if parsed.scheme == "http":
-      score += 25
-      reasons.append(
-          "Peringatan: Menggunakan protokol HTTP (tidak terenkripsi SSL)"
-      )
-
-    # 3. Anomali Subdomain
-    domain_parts = domain.split(".")
-    if len(domain_parts) > 3:
-      score += 20
-      reasons.append(
-          f"Peringatan: Struktur domain mencurigakan dengan banyak subdomain"
-          f" ({len(domain_parts)} segmen)."
-      )
-
-    # 4. Deteksi Typosquatting / Brand Impersonation
-    domain_lower = domain.lower()
-    for brand in POPULAR_BRANDS:
-      if (
-          brand in domain_lower
-          and not domain_lower.endswith(f".{brand}.com")
-          and not domain_lower.endswith(f"{brand}.co.id")
-          and not domain_lower.endswith(f"{brand}.com")
-      ):
-        score += 35
-        reasons.append(
-            f"Peringatan: Terdeteksi upaya peniruan merek populer ('{brand}')"
-            " pada domain."
-        )
-        break
-
-    # 5. Cek Status HTTP Website menggunakan requests
-    server_status = "Tidak Aktif / Unreachable"
-    try:
-      response = requests.get(url, timeout=5)
-      server_status = (
-          f"Aktif (HTTP Status: {response.status_code})"
-          if response.status_code < 400
-          else f"Merespons dengan Error ({response.status_code})"
-      )
-    except Exception:
-      score += 15
-      reasons.append(
-          "Peringatan: Server target gagal dihubungi atau memblokir koneksi"
-          " pengujian."
-      )
-
-    # 6. Cek Umur Domain via WHOIS (Cached)
-    creation_date, error_msg = get_whois_data(domain)
-
-    if isinstance(creation_date, list):
-      creation_date = creation_date[0]
-
-    if creation_date:
-      # Atasi error offset-aware dan offset-naive datetime
-      if hasattr(creation_date, "tzinfo") and creation_date.tzinfo is not None:
-        creation_date = creation_date.replace(tzinfo=None)
-
-      age_days = (datetime.now() - creation_date).days
-      reasons.append(
-          f"Info Domain: Dibuat pada {creation_date.strftime('%Y-%m-%d')} (Umur:"
-          f" {age_days} hari)"
-      )
-
-      if age_days < 30:
-        score += 60
-        reasons.append(
-            f"BAHAYA: Domain ini sangat baru ({age_days} hari)! Sering digunakan"
-            " untuk modus phishing."
-        )
-    else:
-      score += 30
-      reasons.append(
-          "Peringatan: Tanggal registrasi domain disembunyikan/tidak valid"
-          f" ({error_msg or 'Whois kosong'})."
-      )
-
-    return min(score, 100), reasons, server_status
-
-  except Exception as e:
-    return 50, [
-        "Peringatan: Gagal memproses analisis URL. Error:"
-        f" {str(e)}"
-    ], "Error"
-
-
-def analyze_email_content(text):
-  text_lower = text.lower()
-  found_keywords = [kw for kw in PHISHING_KEYWORDS if kw in text_lower]
-  score = len(found_keywords) * 30
-  reasons = [
-      f"Ditemukan kata pancingan psikologis: '{kw}'" for kw in found_keywords
-  ]
-  return min(score, 100), reasons
-
-
-def analyze_sender_email(sender_email):
-  """Fungsi untuk menganalisis alamat email pengirim (Sender Spoofing Check)"""
-  score = 0
-  reasons = []
-
-  if not sender_email:
-    return 0, reasons
-
-  if "@" in sender_email:
-    domain = sender_email.split("@")[1].lower()
-  else:
-    return 50, ["Format alamat email pengirim tidak valid."]
-
-  # Cek domain publik gratisan
-  free_providers = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com"]
-  if domain in free_providers:
-    score += 25
-    reasons.append(
-        f"Peringatan: Pengirim menggunakan layanan email publik gratis"
-        f" ('{domain}'), hati-hati jika mengatasnamakan instansi resmi."
-    )
-
-  # Cek Typosquatting pada domain pengirim
-  for brand in POPULAR_BRANDS:
-    if (
-        brand in domain
-        and not domain.endswith(f".{brand}.com")
-        and not domain.endswith(f"{brand}.co.id")
-        and not domain.endswith(f"{brand}.com")
-    ):
-      score += 45
-      reasons.append(
-          f"BAHAYA: Alamat email pengirim memalsukan merek populer ('{brand}')"
-          f" pada domain '{domain}'."
-      )
-      break
-
-  return min(score, 100), reasons
 
 
 # --- TAMPILAN ANTARMUKA DASHBOARD STREAMLIT ---
@@ -333,7 +311,6 @@ st.markdown(
 )
 st.divider()
 
-# Gunakan layout Tab
 tab1, tab2, tab3 = st.tabs(
     ["🌐 Analisis URL / Domain", "✉️ Analisis Pesan & Pengirim", "ℹ️ Tentang Sistem"]
 )
@@ -345,7 +322,7 @@ with tab1:
   with col1:
     target_url = st.text_input(
         "Masukkan URL atau Domain target:",
-        placeholder="contoh: login-bca-verifikasi.com",
+        placeholder="contoh: login-bca-verifikasi-update.com",
     )
 
   with col2:
@@ -397,23 +374,24 @@ with tab2:
   st.subheader("Pemeriksaan Alamat Pengirim & Konten Pesan")
 
   sender_email = st.text_input(
-      "Alamat Email Pengirim (Opsional):",
-      placeholder="contoh: support@bca-verify-security.com",
+      "Alamat Email Pengirim:",
+      placeholder="contoh: bca.admin@gmail.com atau support@bca.co.id",
   )
   target_email = st.text_area(
       "Tempelkan teks pesan mencurigakan:",
       placeholder=(
-          "Contoh: Akun Anda diblokir, segera verifikasi data Anda di sini..."
+          "Contoh: Selamat anda mendapatkan hadiah mobil silahkan isi data diri"
+          "..."
       ),
   )
 
   if st.button("🔍 Analisis Email & Teks", use_container_width=True):
     if target_email or sender_email:
-      # Analisis pengirim dan konten
-      score_sender, reasons_sender = analyze_sender_email(sender_email)
+      score_sender, reasons_sender = analyze_sender_email(
+          sender_email, target_email
+      )
       score_content, reasons_content = analyze_email_content(target_email)
 
-      # Gabungkan skor dan alasan (maksimal 100)
       total_score = min(score_sender + score_content, 100)
       all_reasons = reasons_sender + reasons_content
 
