@@ -64,6 +64,14 @@ def get_whois_data(domain):
 def real_domain_check(url):
   """Fungsi komprehensif untuk memeriksa keamanan URL"""
   try:
+    # Bersihkan input jika tidak sengaja tersalin format markdown [...]()
+    url = url.strip()
+    if "[" in url and "](" in url:
+      # Ambil bagian URL di dalam kurung siku atau URL aslinya
+      match = re.search(r"\((.*?)\)", url)
+      if match:
+        url = match.group(1)
+
     if not url.startswith("http://") and not url.startswith("https://"):
       url = "https://" + url
 
