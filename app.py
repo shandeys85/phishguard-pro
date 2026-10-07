@@ -147,6 +147,10 @@ def real_domain_check(url):
       creation_date = creation_date[0]
 
     if creation_date:
+      # Atasi error offset-aware dan offset-naive datetime
+      if hasattr(creation_date, "tzinfo") and creation_date.tzinfo is not None:
+        creation_date = creation_date.replace(tzinfo=None)
+
       age_days = (datetime.now() - creation_date).days
       reasons.append(
           f"Info Domain: Dibuat pada {creation_date.strftime('%Y-%m-%d')} (Umur:"
