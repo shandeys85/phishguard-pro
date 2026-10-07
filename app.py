@@ -12,18 +12,65 @@ st.set_page_config(
     layout="wide",
 )
 
-# Daftar kata kunci phishing pada pesan
+# Daftar kata kunci phishing yang diperluas seluas-luasnya (mencakup berbagai modus)
 PHISHING_KEYWORDS = [
+    # Modus Blokir & Keamanan Akun
     "akun diblokir",
-    "verifikasi sekarang",
-    "hadiah gratis",
-    "klik link ini",
-    "segera konfirmasi",
-    "password anda",
-    "pemenang undian",
-    "urgently",
-    "update data",
+    "akun ditangguhkan",
+    "akun anda dibatasi",
+    "aktivitas mencurigakan",
+    "login mencurigakan",
+    "pemulihan akun",
     "pulihkan akun",
+    "reset password",
+    "ubah kata sandi",
+    "konfirmasi password",
+    "password anda",
+    # Modus Verifikasi & Pembaruan Data
+    "verifikasi sekarang",
+    "verifikasi akun",
+    "segera konfirmasi",
+    "update data",
+    "pembaruan data",
+    "lengkapi data",
+    "isi data diri",
+    "validasi data",
+    "sinkronisasi data",
+    "aktivasi ulang",
+    # Modus Hadiah, Undian & Finansial
+    "hadiah gratis",
+    "pemenang undian",
+    "pemenang utama",
+    "selamat anda",
+    "mendapatkan hadiah",
+    "hadiah mobil",
+    "hadiah uang",
+    "klaim hadiah",
+    "bonus saldo",
+    "tarik tunai",
+    "undian berhadiah",
+    "pemberitahuan resi",
+    # Modus Mendesak / Ancaman (Urgency)
+    "urgently",
+    "segera",
+    "dalam waktu 24 jam",
+    "batas waktu",
+    "expired",
+    "kedaluwarsa",
+    "tindakan segera",
+    "abaikan maka",
+    # Instruksi Tindakan Berbahaya
+    "klik link ini",
+    "klik tautan",
+    "scan qr",
+    "scan barcode",
+    "unduh aplikasi",
+    "download apk",
+    "instal aplikasi",
+    "nomor telepon",
+    "kirim otp",
+    "kode otp",
+    "masukkan pin",
 ]
 
 # Daftar target populer yang sering dipalsukan (Typosquatting / Brand Impersonation)
@@ -33,17 +80,27 @@ POPULAR_BRANDS = [
     "bri",
     "mandiri",
     "bni",
+    "danamon",
+    "cimb",
+    "blu",
+    "seabank",
+    "jago",
     "dana",
     "ovo",
     "gopay",
+    "shopeepay",
+    "linkaja",
     "facebook",
     "instagram",
     "netflix",
     "paypal",
     "telkomsel",
+    "indosat",
+    "xl",
     "pln",
+    "pajak",
+    "kemenkeu",
 ]
-
 
 def is_ip_address(domain):
   """Fungsi untuk mengecek apakah domain berupa alamat IP mentah"""
